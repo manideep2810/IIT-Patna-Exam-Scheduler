@@ -1,0 +1,477 @@
+{
+  "info": {
+    "_postman_id": "e77eb5e2-7e66-49a5-a04c-13df2dc148aa",
+    "name": "University Exam Timetable API - Phase 2",
+    "description": "Import this collection into Postman. Set the collection variables before sending requests. Login requests automatically save their access tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "superAdminEmail",
+      "value": "admin@example.edu"
+    },
+    {
+      "key": "superAdminPassword",
+      "value": ""
+    },
+    {
+      "key": "superAdminToken",
+      "value": ""
+    },
+    {
+      "key": "departmentAdminEmail",
+      "value": "department.admin@example.edu"
+    },
+    {
+      "key": "departmentAdminPassword",
+      "value": "12345678"
+    },
+    {
+      "key": "departmentAdminNewPassword",
+      "value": "new-secure-password"
+    },
+    {
+      "key": "departmentAdminToken",
+      "value": ""
+    },
+    {
+      "key": "departmentAdminId",
+      "value": ""
+    },
+    {
+      "key": "examPeriodId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login as Super Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('superAdminToken', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as Department Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('departmentAdminToken', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{departmentAdminEmail}}\",\n  \"password\": \"{{departmentAdminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get current Super Admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get current Department Admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{departmentAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Change Department Admin password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{departmentAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{departmentAdminPassword}}\",\n  \"newPassword\": \"{{departmentAdminNewPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "change-password"]
+            }
+          }
+        },
+        {
+          "name": "Logout Super Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Logout Department Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{departmentAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Super Admin - Department Admins",
+      "item": [
+        {
+          "name": "Create Department Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('departmentAdminId', body.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{departmentAdminEmail}}\",\n  \"password\": \"{{departmentAdminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/department-admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "department-admins"]
+            }
+          }
+        },
+        {
+          "name": "List Department Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/department-admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "department-admins"]
+            }
+          }
+        },
+        {
+          "name": "Set Department Admin temporary password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{departmentAdminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/department-admins/{{departmentAdminId}}/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "department-admins", "{{departmentAdminId}}", "password"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Department Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/department-admins/{{departmentAdminId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "department-admins", "{{departmentAdminId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Activate Department Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/department-admins/{{departmentAdminId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "department-admins", "{{departmentAdminId}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Super Admin - Exam Periods and Imports",
+      "item": [
+        {
+          "name": "Create Exam Period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('examPeriodId', body.examPeriod.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"End Semester Examination 2026\",\n  \"startDate\": \"2026-12-01\",\n  \"endDate\": \"2026-12-15\",\n  \"timezone\": \"Asia/Kolkata\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods"]
+            }
+          }
+        },
+        {
+          "name": "List Exam Periods",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods"]
+            }
+          }
+        },
+        {
+          "name": "Import Department Admin Course Prefixes",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/imports/admin-course-permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "imports", "admin-course-permissions"]
+            }
+          }
+        },
+        {
+          "name": "Import Rooms",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/imports/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "imports", "rooms"]
+            }
+          }
+        },
+        {
+          "name": "Import Course Enrollments",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods/{{examPeriodId}}/imports/course-enrollments",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods", "{{examPeriodId}}", "imports", "course-enrollments"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

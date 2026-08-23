@@ -1,0 +1,215 @@
+Project university_exam_timetable {
+  database_type: 'PostgreSQL'
+  Note: 'University exam timetable with course-level admin access, multi-room exams, shared rooms, and student clash detection.'
+}
+
+Enum user_role {
+  SUPER_ADMIN
+  DEPARTMENT_ADMIN
+}
+
+Enum exam_status {
+  DRAFT
+  SCHEDULED
+  CANCELLED
+}
+
+Enum slot_session {
+  MORNING
+  AFTERNOON
+}
+
+Table departments {
+  id uuid [pk]
+  code varchar(30) [not null, unique]
+  name varchar(150) [not null]
+  created_at timestamptz [not null]
+
+  Note: 'Optional organisational metadata. Course permissions are the source of truth for access.'
+}
+
+Table users {
+  id uuid [pk]
+  department_id uuid
+  email varchar(320) [not null, unique]
+  password_hash varchar(255) [not null]
+  role user_role [not null]
+  must_change_password boolean [not null, default: true]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'The Super Admin creates department admins and sets their initial passwords. Plaintext passwords are never stored. The database also has a case-insensitive unique index on lower(email).'
+}
+
+Table courses {
+  id uuid [pk]
+  department_id uuid
+  course_code varchar(50) [not null, unique]
+  course_name varchar(255)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+}
+
+Table admin_course_prefix_permissions {
+  id uuid [pk]
+  user_id uuid [not null]
+  course_prefix varchar(50) [not null]
+  granted_by uuid [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, course_prefix) [unique]
+  }
+
+  Note: 'A department admin can schedule courses whose course code starts with this prefix. Prefixes are not foreign keys to courses.'
+}
+
+Table students {
+  id uuid [pk]
+  roll_number varchar(80) [not null, unique]
+  created_at timestamptz [not null]
+}
+
+Table exam_periods {
+  id uuid [pk]
+  name varchar(150) [not null]
+  start_date date [not null]
+  end_date date [not null]
+  timezone varchar(50) [not null, default: 'Asia/Kolkata']
+  is_active boolean [not null, default: true]
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+}
+
+Table course_enrollments {
+  id uuid [pk]
+  exam_period_id uuid [not null]
+  course_id uuid [not null]
+  student_id uuid [not null]
+  imported_at timestamptz [not null]
+
+  Indexes {
+    (exam_period_id, course_id, student_id) [unique]
+    (exam_period_id, course_id)
+    (exam_period_id, student_id)
+  }
+
+  Note: 'The semicolon-separated roll-number upload is split into normalized rows.'
+}
+
+Table rooms {
+  id uuid [pk]
+  location varchar(150)
+  room_number varchar(50) [not null, unique]
+  exam_capacity int [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+
+  Note: 'exam_capacity must be greater than zero.'
+}
+
+Table exam_slots {
+  id uuid [pk]
+  exam_period_id uuid [not null]
+  exam_date date [not null]
+  session slot_session [not null]
+  start_at timestamptz [not null]
+  end_at timestamptz [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (exam_period_id, exam_date, session) [unique]
+    (id, exam_period_id) [unique]
+  }
+
+  Note: 'MORNING is 09:30–12:30 and AFTERNOON is 14:30–17:30.'
+}
+
+Table exams {
+  id uuid [pk]
+  exam_period_id uuid [not null]
+  exam_slot_id uuid [not null]
+  course_id uuid [not null]
+  status exam_status [not null, default: 'DRAFT']
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (exam_period_id, course_id) [unique]
+    (exam_slot_id, course_id) [unique]
+    (id, exam_slot_id) [unique]
+  }
+}
+
+Table exam_room_allocations {
+  id uuid [pk]
+  exam_id uuid [not null]
+  room_id uuid [not null]
+  seats_reserved int [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (exam_id, room_id) [unique]
+    (room_id)
+  }
+
+  Note: 'One exam may use many rooms. Multiple exams may reserve seats in the same room and slot.'
+}
+
+Table room_slot_usage {
+  id uuid [pk]
+  exam_slot_id uuid [not null]
+  room_id uuid [not null]
+  reserved_seats int [not null, default: 0]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (exam_slot_id, room_id) [unique]
+  }
+
+  Note: 'Aggregate room occupancy, not an exam allocation. It equals the sum of all reservations in this room and slot.'
+}
+
+Table exam_candidates {
+  id uuid [pk]
+  exam_id uuid [not null]
+  exam_slot_id uuid [not null]
+  student_id uuid [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (exam_id, student_id) [unique]
+    (exam_slot_id, student_id) [unique]
+    (exam_slot_id)
+  }
+
+  Note: 'The unique slot/student index prevents a student from receiving two exams in one slot.'
+}
+
+Ref: users.department_id > departments.id
+Ref: courses.department_id > departments.id
+
+Ref: admin_course_prefix_permissions.user_id > users.id
+Ref: admin_course_prefix_permissions.granted_by > users.id
+
+Ref: exam_periods.created_by > users.id
+Ref: course_enrollments.exam_period_id > exam_periods.id
+Ref: course_enrollments.course_id > courses.id
+Ref: course_enrollments.student_id > students.id
+
+Ref: exam_slots.exam_period_id > exam_periods.id
+Ref: exams.exam_period_id > exam_periods.id
+Ref: exams.(exam_slot_id, exam_period_id) > exam_slots.(id, exam_period_id)
+Ref: exams.course_id > courses.id
+Ref: exams.created_by > users.id
+
+Ref: exam_room_allocations.exam_id > exams.id
+Ref: exam_room_allocations.room_id > rooms.id
+Ref: room_slot_usage.exam_slot_id > exam_slots.id
+Ref: room_slot_usage.room_id > rooms.id
+
+Ref: exam_candidates.exam_id > exams.id
+Ref: exam_candidates.student_id > students.id
+Ref: exam_candidates.(exam_id, exam_slot_id) > exams.(id, exam_slot_id)

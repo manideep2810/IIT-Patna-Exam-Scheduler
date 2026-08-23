@@ -1,0 +1,181 @@
+{
+  "info": {
+    "_postman_id": "8f0e1a40-e4c3-42ec-acfa-0c4f92fb5827",
+    "name": "University Exam Timetable API - Phase 4 Scheduling",
+    "description": "Standalone Phase 4 collection. Run the Super Admin login, select/create an exam period, generate slots, load a schedulable course and room, then schedule it. The Scenarios folder contains requests expected to fail or requires manually chosen second/conflicting courses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "superAdminEmail", "value": "admin@example.edu" },
+    { "key": "superAdminPassword", "value": "" },
+    { "key": "superAdminToken", "value": "" },
+    { "key": "departmentAdminEmail", "value": "" },
+    { "key": "departmentAdminPassword", "value": "" },
+    { "key": "departmentAdminToken", "value": "" },
+    { "key": "examPeriodId", "value": "" },
+    { "key": "firstExamDate", "value": "2026-12-01" },
+    { "key": "secondExamDate", "value": "2026-12-02" },
+    { "key": "morningSlotId", "value": "" },
+    { "key": "afternoonSlotId", "value": "" },
+    { "key": "courseId", "value": "" },
+    { "key": "candidateCount", "value": "" },
+    { "key": "roomId", "value": "" },
+    { "key": "roomAvailableSeats", "value": "" },
+    { "key": "incorrectSeatCount", "value": "" },
+    { "key": "additionalCourseId", "value": "" },
+    { "key": "additionalCandidateCount", "value": "" },
+    { "key": "conflictingCourseId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Prerequisite Authentication",
+      "item": [
+        {
+          "name": "Login as Super Admin",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('superAdminToken', pm.response.json().accessToken);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login as Department Admin",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('departmentAdminToken', pm.response.json().accessToken);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{departmentAdminEmail}}\",\n  \"password\": \"{{departmentAdminPassword}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Slots",
+      "item": [
+        {
+          "name": "Generate fixed slots for selected dates",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Two slots per supplied date are created', () => pm.response.to.have.status(201));", "const slots = pm.response.json().slots;", "pm.collectionVariables.set('morningSlotId', slots.find((slot) => slot.session === 'MORNING').id);", "pm.collectionVariables.set('afternoonSlotId', slots.find((slot) => slot.session === 'AFTERNOON').id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"examDates\": [\"{{firstExamDate}}\", \"{{secondExamDate}}\"]\n}" },
+            "url": { "raw": "{{baseUrl}}/admin/exam-periods/{{examPeriodId}}/slots", "host": ["{{baseUrl}}"], "path": ["admin", "exam-periods", "{{examPeriodId}}", "slots"] }
+          }
+        },
+        {
+          "name": "List generated slots",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/exam-periods/{{examPeriodId}}/slots", "host": ["{{baseUrl}}"], "path": ["admin", "exam-periods", "{{examPeriodId}}", "slots"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Normal scheduling flow",
+      "item": [
+        {
+          "name": "List Super Admin schedulable courses",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Schedulable courses are returned', () => pm.response.to.have.status(200));", "const course = pm.response.json().courses[0];", "if (!course) { throw new Error('No schedulable course exists for this exam period. Import enrollments first.'); }", "pm.collectionVariables.set('courseId', course.id);", "pm.collectionVariables.set('candidateCount', course.candidateCount);"] } }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/schedulable-courses", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "schedulable-courses"] }
+          }
+        },
+        {
+          "name": "List Department Admin schedulable courses (prefix access check)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{departmentAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/schedulable-courses", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "schedulable-courses"] }
+          }
+        },
+        {
+          "name": "List room availability for Morning slot",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Rooms are returned', () => pm.response.to.have.status(200));", "const requiredSeats = Number(pm.collectionVariables.get('candidateCount'));", "const room = pm.response.json().rooms.find((item) => item.availableSeats >= requiredSeats);", "if (!room) { throw new Error('No room has enough available seats for the selected course. Use multi-room allocations or choose another course.'); }", "pm.collectionVariables.set('roomId', room.id);", "pm.collectionVariables.set('roomAvailableSeats', room.availableSeats);"] } }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/rooms?examSlotId={{morningSlotId}}", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "rooms"], "query": [{ "key": "examSlotId", "value": "{{morningSlotId}}" }] }
+          }
+        },
+        {
+          "name": "Schedule selected course in one room",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Exam is scheduled', () => pm.response.to.have.status(201));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"examSlotId\": \"{{morningSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{candidateCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        },
+        {
+          "name": "Get timetable",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/timetable", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "timetable"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenarios - expected validation behaviour",
+      "item": [
+        {
+          "name": "Reject duplicate scheduling of same course",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"examSlotId\": \"{{morningSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{candidateCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        },
+        {
+          "name": "Reject incorrect total reserved seats",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('incorrectSeatCount', Number(pm.collectionVariables.get('candidateCount')) + 1);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{additionalCourseId}}\",\n  \"examSlotId\": \"{{afternoonSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{incorrectSeatCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        },
+        {
+          "name": "Shared room: schedule another non-conflicting course",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{additionalCourseId}}\",\n  \"examSlotId\": \"{{morningSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{additionalCandidateCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        },
+        {
+          "name": "Reject student-clash course in same slot",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{conflictingCourseId}}\",\n  \"examSlotId\": \"{{morningSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{additionalCandidateCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        },
+        {
+          "name": "Reject aggregate room-capacity overflow",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('additionalCandidateCount', Number(pm.collectionVariables.get('roomAvailableSeats')) + 1);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{additionalCourseId}}\",\n  \"examSlotId\": \"{{morningSlotId}}\",\n  \"roomAllocations\": [\n    { \"roomId\": \"{{roomId}}\", \"seatsReserved\": {{additionalCandidateCount}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/exam-periods/{{examPeriodId}}/exams", "host": ["{{baseUrl}}"], "path": ["exam-periods", "{{examPeriodId}}", "exams"] }
+          }
+        }
+      ]
+    }
+  ]
+}

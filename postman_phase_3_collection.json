@@ -1,0 +1,220 @@
+{
+  "info": {
+    "_postman_id": "e472ec1d-bd0d-4556-8fef-e0bb556e31ca",
+    "name": "University Exam Timetable API - Phase 3 Imports",
+    "description": "Standalone Phase 3 collection. Set superAdminEmail and superAdminPassword, run Login as Super Admin, create an exam period, then select a CSV/XLSX file in each import request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "superAdminEmail",
+      "value": "admin@example.edu"
+    },
+    {
+      "key": "superAdminPassword",
+      "value": ""
+    },
+    {
+      "key": "superAdminToken",
+      "value": ""
+    },
+    {
+      "key": "examPeriodId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Prerequisite Authentication",
+      "item": [
+        {
+          "name": "Login as Super Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeds', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('superAdminToken', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Exam Periods",
+      "item": [
+        {
+          "name": "Create Exam Period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exam period is created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('examPeriodId', body.examPeriod.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"End Semester Examination 2026\",\n  \"startDate\": \"2026-12-01\",\n  \"endDate\": \"2026-12-15\",\n  \"timezone\": \"Asia/Kolkata\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods"]
+            }
+          }
+        },
+        {
+          "name": "List Exam Periods",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Spreadsheet Imports",
+      "item": [
+        {
+          "name": "Import Department Admin Course Prefixes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose the CSV/XLSX permissions sheet. The first column is id/email; each other populated cell is a course prefix."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/imports/admin-course-permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "imports", "admin-course-permissions"]
+            }
+          }
+        },
+        {
+          "name": "Import Rooms",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose the CSV/XLSX rooms sheet. Required headers: room number and exam capacity."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/imports/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "imports", "rooms"]
+            }
+          }
+        },
+        {
+          "name": "Import Course Enrollments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose the CSV/XLSX enrollment sheet. Required headers: sub_code, sub_name, roll_no."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/exam-periods/{{examPeriodId}}/imports/course-enrollments",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "exam-periods", "{{examPeriodId}}", "imports", "course-enrollments"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
