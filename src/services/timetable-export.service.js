@@ -30,7 +30,8 @@ function formatCsv(rows) {
     'Candidate Count',
     'Room Number',
     'Location',
-    'Seats Reserved'
+    'Seats Reserved',
+    'Allocated Students'
   ];
 
   return [header, ...rows].map((row) => row.map(escapeCsvValue).join(',')).join('\r\n') + '\r\n';
@@ -52,7 +53,22 @@ async function requireExamPeriod(examPeriodId) {
 
 async function listExportRows(examPeriodId, user) {
   const result = await pool.query(
-    `SELECT slots.exam_date,
+    `WITH allocation_positions AS (
+       SELECT allocations.exam_id,
+              allocations.room_id,
+              allocations.seats_reserved,
+              COALESCE(
+                SUM(allocations.seats_reserved) OVER (
+                  PARTITION BY allocations.exam_id
+                  ORDER BY allocations.seats_reserved DESC, rooms.room_number ASC, allocations.id ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ),
+                0
+              )::integer AS students_before_room
+       FROM exam_room_allocations allocations
+       JOIN rooms ON rooms.id = allocations.room_id
+     )
+     SELECT slots.exam_date,
             slots.session,
             TO_CHAR(slots.start_at AT TIME ZONE periods.timezone, 'HH24:MI') AS start_time,
             TO_CHAR(slots.end_at AT TIME ZONE periods.timezone, 'HH24:MI') AS end_time,
@@ -61,18 +77,32 @@ async function listExportRows(examPeriodId, user) {
             candidates.candidate_count,
             rooms.room_number,
             rooms.location,
-            allocations.seats_reserved
+            allocation_positions.seats_reserved,
+            COALESCE(allocated_students.roll_numbers, '') AS allocated_students
      FROM exams
      JOIN exam_slots slots ON slots.id = exams.exam_slot_id
      JOIN exam_periods periods ON periods.id = exams.exam_period_id
      JOIN courses ON courses.id = exams.course_id
-     JOIN exam_room_allocations allocations ON allocations.exam_id = exams.id
-     JOIN rooms ON rooms.id = allocations.room_id
+     JOIN allocation_positions ON allocation_positions.exam_id = exams.id
+     JOIN rooms ON rooms.id = allocation_positions.room_id
      JOIN LATERAL (
        SELECT COUNT(*)::integer AS candidate_count
        FROM exam_candidates
        WHERE exam_id = exams.id
      ) candidates ON true
+     LEFT JOIN LATERAL (
+       SELECT STRING_AGG(enrolled.roll_number, '; ' ORDER BY enrolled.roll_number) AS roll_numbers
+       FROM (
+         SELECT students.roll_number
+         FROM course_enrollments enrollments
+         JOIN students ON students.id = enrollments.student_id
+         WHERE enrollments.exam_period_id = exams.exam_period_id
+           AND enrollments.course_id = exams.course_id
+         ORDER BY students.roll_number ASC
+         OFFSET allocation_positions.students_before_room
+         LIMIT allocation_positions.seats_reserved
+       ) enrolled
+     ) allocated_students ON true
      WHERE exams.exam_period_id = $1
        AND exams.status = 'SCHEDULED'
        AND (
@@ -84,7 +114,8 @@ async function listExportRows(examPeriodId, user) {
              AND UPPER(courses.course_code) LIKE permissions.course_prefix || '%'
          )
        )
-     ORDER BY slots.exam_date ASC, slots.start_at ASC, courses.course_code ASC, rooms.room_number ASC`,
+     ORDER BY slots.exam_date ASC, slots.start_at ASC, courses.course_code ASC,
+              allocation_positions.seats_reserved DESC, rooms.room_number ASC`,
     [examPeriodId, user.role, user.id]
   );
 
@@ -98,7 +129,8 @@ async function listExportRows(examPeriodId, user) {
     row.candidate_count,
     row.room_number,
     row.location,
-    row.seats_reserved
+    row.seats_reserved,
+    row.allocated_students
   ]);
 }
 

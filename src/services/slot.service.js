@@ -50,7 +50,11 @@ export async function createSlots(examPeriodId, examDates) {
       `SELECT id,
               start_date::text AS start_date,
               end_date::text AS end_date,
-              timezone
+              timezone,
+              morning_start_time,
+              morning_end_time,
+              afternoon_start_time,
+              afternoon_end_time
        FROM exam_periods
        WHERE id = $1
        FOR UPDATE`,
@@ -99,10 +103,10 @@ export async function createSlots(examPeriodId, examDates) {
               (requested_dates.exam_date + sessions.end_time) AT TIME ZONE period.timezone
        FROM exam_periods period
        CROSS JOIN requested_dates
-       CROSS JOIN (
+       CROSS JOIN LATERAL (
          VALUES
-           ('MORNING', TIME '09:30', TIME '12:30'),
-           ('AFTERNOON', TIME '14:30', TIME '17:30')
+           ('MORNING', period.morning_start_time, period.morning_end_time),
+           ('AFTERNOON', period.afternoon_start_time, period.afternoon_end_time)
        ) AS sessions(session, start_time, end_time)
        WHERE period.id = $1
        RETURNING id, exam_period_id, exam_date, session, start_at, end_at`,

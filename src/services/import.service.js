@@ -116,11 +116,13 @@ export async function importAdminCoursePrefixes(file, grantedBy) {
     [[...admins.keys()]]
   );
   const usersByEmail = new Map(usersResult.rows.map((user) => [user.email, user]));
+  const missingDepartmentAdminEmails = [];
 
   for (const [email, admin] of admins) {
     const user = usersByEmail.get(email);
 
     if (!user) {
+      missingDepartmentAdminEmails.push(email);
       collector.add({
         row: admin.spreadsheetRow,
         column: 'id/email',
@@ -142,6 +144,23 @@ export async function importAdminCoursePrefixes(file, grantedBy) {
         message: `Department Admin ${email} is inactive. Activate the account before importing permissions.`
       });
     }
+  }
+
+  if (missingDepartmentAdminEmails.length > 0) {
+    const visibleEmails = missingDepartmentAdminEmails.slice(0, 20);
+    const remaining = missingDepartmentAdminEmails.length - visibleEmails.length;
+
+    throw new AppError(
+      400,
+      'DEPARTMENT_ADMINS_REQUIRED',
+      `Create Department Admin accounts before importing permissions for: ${visibleEmails.join(', ')}${remaining > 0 ? ` and ${remaining} more` : ''}.`,
+      {
+        missingDepartmentAdminEmails,
+        errors: collector.errors,
+        totalErrors: collector.totalErrors,
+        errorsTruncated: collector.totalErrors > collector.errors.length
+      }
+    );
   }
 
   collector.throwIfAny();

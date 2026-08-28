@@ -77,6 +77,10 @@ Table exam_periods {
   start_date date [not null]
   end_date date [not null]
   timezone varchar(50) [not null, default: 'Asia/Kolkata']
+  morning_start_time time [not null, default: '09:30']
+  morning_end_time time [not null, default: '12:30']
+  afternoon_start_time time [not null, default: '14:30']
+  afternoon_end_time time [not null, default: '17:30']
   is_active boolean [not null, default: true]
   created_by uuid [not null]
   created_at timestamptz [not null]
@@ -123,7 +127,7 @@ Table exam_slots {
     (id, exam_period_id) [unique]
   }
 
-  Note: 'MORNING is 09:30–12:30 and AFTERNOON is 14:30–17:30.'
+  Note: 'MORNING and AFTERNOON start/end times are copied from the examination period when the slots are created.'
 }
 
 Table exams {
