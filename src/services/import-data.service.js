@@ -4,6 +4,28 @@ import { AppError } from '../middleware/error-handler.js';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PAGE_SIZE = 100;
 
+async function withTransaction(work) {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function requireUuid(value, label, code) {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    throw new AppError(400, code, `${label} must be a valid UUID.`);
+  }
+}
+
 function parsePagination({ page, pageSize } = {}) {
   const parsedPage = Number.parseInt(page ?? '1', 10);
   const parsedPageSize = Number.parseInt(pageSize ?? '10', 10);
@@ -149,4 +171,155 @@ export async function listCourseEnrollmentSummaries(examPeriodId, query) {
     courseName: row.course_name,
     candidateCount: row.candidate_count
   })), totalResult.rows[0].total, pagination);
+}
+
+export async function deleteRoomImportData(roomId) {
+  requireUuid(roomId, 'roomId', 'INVALID_ROOM_ID');
+
+  return withTransaction(async (client) => {
+    const roomResult = await client.query(
+      `SELECT id, room_number
+       FROM rooms
+       WHERE id = $1
+       FOR UPDATE`,
+      [roomId]
+    );
+    const room = roomResult.rows[0];
+
+    if (!room) {
+      throw new AppError(404, 'ROOM_NOT_FOUND', 'The selected room was not found.');
+    }
+
+    const allocationResult = await client.query(
+      `SELECT 1
+       FROM exam_room_allocations
+       WHERE room_id = $1
+       LIMIT 1`,
+      [roomId]
+    );
+
+    if (allocationResult.rowCount > 0) {
+      throw new AppError(
+        409,
+        'ROOM_IN_USE',
+        `Room ${room.room_number} cannot be deleted because it is allocated to an examination. Delete that examination first.`
+      );
+    }
+
+    await client.query('DELETE FROM rooms WHERE id = $1', [roomId]);
+    return { roomNumber: room.room_number };
+  });
+}
+
+export async function deleteAllRoomsImportData() {
+  return withTransaction(async (client) => {
+    // Lock the room set before checking allocations so a concurrent scheduling
+    // request cannot reserve a room between this check and the deletion.
+    await client.query('SELECT id FROM rooms FOR UPDATE');
+    const allocatedRooms = await client.query(
+      `SELECT DISTINCT rooms.room_number
+       FROM rooms
+       JOIN exam_room_allocations allocations ON allocations.room_id = rooms.id
+       ORDER BY rooms.room_number ASC`
+    );
+
+    if (allocatedRooms.rowCount > 0) {
+      const roomNumbers = allocatedRooms.rows.map((row) => row.room_number);
+      const shown = roomNumbers.slice(0, 8).join(', ');
+      const suffix = roomNumbers.length > 8 ? ` and ${roomNumbers.length - 8} more` : '';
+      throw new AppError(
+        409,
+        'ROOMS_IN_USE',
+        `Imported rooms cannot be deleted while they are allocated to examinations: ${shown}${suffix}. Delete those examinations first.`,
+        { roomNumbers }
+      );
+    }
+
+    const deleted = await client.query('DELETE FROM rooms RETURNING id');
+    return { deletedCount: deleted.rowCount };
+  });
+}
+
+async function requirePeriod(client, examPeriodId) {
+  requireUuid(examPeriodId, 'examPeriodId', 'INVALID_EXAM_PERIOD_ID');
+  const period = await client.query('SELECT id FROM exam_periods WHERE id = $1 FOR UPDATE', [examPeriodId]);
+
+  if (period.rowCount === 0) {
+    throw new AppError(404, 'EXAM_PERIOD_NOT_FOUND', 'The selected exam period was not found.');
+  }
+}
+
+async function assertCourseIsNotScheduled(client, examPeriodId, courseId) {
+  const scheduled = await client.query(
+    `SELECT courses.course_code
+     FROM exams
+     JOIN courses ON courses.id = exams.course_id
+     WHERE exams.exam_period_id = $1
+       AND exams.course_id = $2
+       AND exams.status = 'SCHEDULED'
+     LIMIT 1`,
+    [examPeriodId, courseId]
+  );
+
+  if (scheduled.rowCount > 0) {
+    throw new AppError(
+      409,
+      'ENROLLMENTS_LOCKED_BY_SCHEDULED_EXAM',
+      `Enrollment data for ${scheduled.rows[0].course_code} cannot be deleted because its examination is already scheduled.`
+    );
+  }
+}
+
+export async function deleteCourseEnrollmentImportData(examPeriodId, courseId) {
+  requireUuid(courseId, 'courseId', 'INVALID_COURSE_ID');
+
+  return withTransaction(async (client) => {
+    await requirePeriod(client, examPeriodId);
+    await assertCourseIsNotScheduled(client, examPeriodId, courseId);
+    const deleted = await client.query(
+      `DELETE FROM course_enrollments
+       WHERE exam_period_id = $1 AND course_id = $2
+       RETURNING id`,
+      [examPeriodId, courseId]
+    );
+
+    if (deleted.rowCount === 0) {
+      throw new AppError(404, 'COURSE_ENROLLMENT_NOT_FOUND', 'No imported enrolments were found for the selected course.');
+    }
+
+    return { deletedCount: deleted.rowCount };
+  });
+}
+
+export async function deleteAllCourseEnrollmentImportData(examPeriodId) {
+  return withTransaction(async (client) => {
+    await requirePeriod(client, examPeriodId);
+    const scheduled = await client.query(
+      `SELECT courses.course_code
+       FROM exams
+       JOIN courses ON courses.id = exams.course_id
+       WHERE exams.exam_period_id = $1
+         AND exams.status = 'SCHEDULED'
+       ORDER BY courses.course_code ASC`,
+      [examPeriodId]
+    );
+
+    if (scheduled.rowCount > 0) {
+      const codes = scheduled.rows.map((row) => row.course_code);
+      const shown = codes.slice(0, 8).join(', ');
+      const suffix = codes.length > 8 ? ` and ${codes.length - 8} more` : '';
+      throw new AppError(
+        409,
+        'ENROLLMENTS_LOCKED_BY_SCHEDULED_EXAM',
+        `Enrollment data cannot be deleted while scheduled examinations exist for: ${shown}${suffix}. Delete those examinations first.`,
+        { courseCodes: codes }
+      );
+    }
+
+    const deleted = await client.query(
+      'DELETE FROM course_enrollments WHERE exam_period_id = $1 RETURNING id',
+      [examPeriodId]
+    );
+    return { deletedCount: deleted.rowCount };
+  });
 }

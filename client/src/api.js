@@ -63,6 +63,7 @@ export const api = {
   timetable: (token, periodId) => request(`/exam-periods/${periodId}/timetable`, { token }),
   schedulableCourses: (token, periodId) => request(`/exam-periods/${periodId}/schedulable-courses`, { token }),
   rooms: (token, periodId, slotId) => request(`/exam-periods/${periodId}/rooms?examSlotId=${encodeURIComponent(slotId)}`, { token }),
+  roomAllocation: (token, periodId, slotId, roomId) => request(`/exam-periods/${periodId}/room-allocations?${new URLSearchParams({ examSlotId: slotId, roomId })}`, { token }),
   schedule: (token, periodId, body) => request(`/exam-periods/${periodId}/exams`, { token, method: 'POST', body }),
   deleteExam: (token, periodId, examId) => request(`/exam-periods/${periodId}/exams/${examId}`, { token, method: 'DELETE' }),
   departmentAdmins: (token) => request('/admin/department-admins', { token }),
@@ -70,8 +71,12 @@ export const api = {
   setDepartmentAdminStatus: (token, userId, isActive) => request(`/admin/department-admins/${userId}/status`, { token, method: 'PATCH', body: { isActive } }),
   setDepartmentAdminPassword: (token, userId, password) => request(`/admin/department-admins/${userId}/password`, { token, method: 'PATCH', body: { password } }),
   importRoomsData: (token, query) => request(`/admin/rooms?${new URLSearchParams(query)}`, { token }),
+  deleteImportedRoom: (token, roomId) => request(`/admin/rooms/${roomId}`, { token, method: 'DELETE' }),
+  deleteAllImportedRooms: (token) => request('/admin/rooms', { token, method: 'DELETE' }),
   importPermissionsData: (token, query) => request(`/admin/course-prefix-permissions?${new URLSearchParams(query)}`, { token }),
   importEnrollmentData: (token, periodId, query) => request(`/admin/exam-periods/${periodId}/course-enrollments?${new URLSearchParams(query)}`, { token }),
+  deleteImportedCourseEnrollment: (token, periodId, courseId) => request(`/admin/exam-periods/${periodId}/course-enrollments/${courseId}`, { token, method: 'DELETE' }),
+  deleteAllImportedCourseEnrollments: (token, periodId) => request(`/admin/exam-periods/${periodId}/course-enrollments`, { token, method: 'DELETE' }),
   upload: (token, path, file) => {
     const form = new FormData();
     form.append('file', file);

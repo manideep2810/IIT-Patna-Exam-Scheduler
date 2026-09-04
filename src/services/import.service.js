@@ -272,55 +272,36 @@ export async function importRooms(file) {
   const capacities = roomNumbers.map((roomNumber) => rooms.get(roomNumber).examCapacity);
 
   await withTransaction(async (client) => {
-    // Scheduling locks room rows before reserving seats. Lock the same rows
-    // here so no reservation can be added between this check and the update.
-    const existingRooms = await client.query(
-      `SELECT id, room_number
+    // A successful file is a complete replacement. Lock the full room set so
+    // scheduling cannot allocate a room between this protection check and the replacement.
+    await client.query('SELECT id FROM rooms FOR UPDATE');
+    const allocatedRooms = await client.query(
+      `SELECT DISTINCT rooms.room_number
        FROM rooms
-       WHERE room_number = ANY($1::text[])
-       ORDER BY id ASC
-       FOR UPDATE`,
-      [roomNumbers]
+       JOIN exam_room_allocations allocations ON allocations.room_id = rooms.id
+       ORDER BY rooms.room_number ASC`
     );
 
-    if (existingRooms.rowCount > 0) {
-      const usageResult = await client.query(
-        `SELECT rooms.room_number,
-                COALESCE(MAX(usage.reserved_seats), 0)::integer AS highest_reserved_seats
-         FROM rooms
-         LEFT JOIN room_slot_usage usage ON usage.room_id = rooms.id
-         WHERE rooms.id = ANY($1::uuid[])
-         GROUP BY rooms.room_number`,
-        [existingRooms.rows.map((room) => room.id)]
+    if (allocatedRooms.rowCount > 0) {
+      const roomNumbersInUse = allocatedRooms.rows.map((room) => room.room_number);
+      throw new AppError(
+        409,
+        'ROOM_IMPORT_LOCKED_BY_SCHEDULED_EXAMS',
+        `Rooms cannot be replaced because they are allocated to examinations: ${roomNumbersInUse.slice(0, 8).join(', ')}${roomNumbersInUse.length > 8 ? ` and ${roomNumbersInUse.length - 8} more` : ''}. Delete those examinations first.`,
+        { roomNumbers: roomNumbersInUse }
       );
-      const reservedSeatsByRoom = new Map(
-        usageResult.rows.map((room) => [room.room_number, room.highest_reserved_seats])
-      );
-      const conflicts = roomNumbers
-        .map((roomNumber) => ({
-          roomNumber,
-          importedCapacity: rooms.get(roomNumber).examCapacity,
-          reservedSeats: Number(reservedSeatsByRoom.get(roomNumber) ?? 0)
-        }))
-        .filter((room) => room.importedCapacity < room.reservedSeats);
-
-      if (conflicts.length > 0) {
-        throw new AppError(
-          409,
-          'ROOM_CAPACITY_BELOW_RESERVED_SEATS',
-          `Room capacity cannot be reduced below existing reservations: ${conflicts.map((room) => `${room.roomNumber} has ${room.reservedSeats} reserved seats`).join('; ')}.`,
-          { rooms: conflicts }
-        );
-      }
     }
+
+    // Normally these rows are removed when an exam is deleted. Clearing any
+    // zero-seat remnants also keeps a valid replacement from being blocked by
+    // stale slot-usage bookkeeping.
+    await client.query('DELETE FROM room_slot_usage WHERE reserved_seats = 0');
+    await client.query('DELETE FROM rooms');
 
     await client.query(
       `INSERT INTO rooms (room_number, location, exam_capacity)
        SELECT source.room_number, source.location, source.exam_capacity
-       FROM UNNEST($1::text[], $2::text[], $3::integer[]) AS source(room_number, location, exam_capacity)
-       ON CONFLICT (room_number) DO UPDATE
-       SET location = EXCLUDED.location,
-           exam_capacity = EXCLUDED.exam_capacity`,
+       FROM UNNEST($1::text[], $2::text[], $3::integer[]) AS source(room_number, location, exam_capacity)`,
       [roomNumbers, locations, capacities]
     );
   });
@@ -392,7 +373,7 @@ export async function importCourseEnrollments(file, examPeriodId) {
   collector.throwIfAny();
 
   return withTransaction(async (client) => {
-    const period = await client.query('SELECT id FROM exam_periods WHERE id = $1', [examPeriodId]);
+    const period = await client.query('SELECT id FROM exam_periods WHERE id = $1 FOR UPDATE', [examPeriodId]);
 
     if (period.rowCount === 0) {
       throw new AppError(404, 'EXAM_PERIOD_NOT_FOUND', 'The selected exam period was not found.');
@@ -413,27 +394,20 @@ export async function importCourseEnrollments(file, examPeriodId) {
        JOIN courses ON courses.id = exams.course_id
        WHERE exams.exam_period_id = $1
          AND exams.status = 'SCHEDULED'
-         AND courses.course_code = ANY($2::text[])`,
-      [examPeriodId, courseCodes]
+       ORDER BY courses.course_code ASC`,
+      [examPeriodId]
     );
-    const scheduledCourseCodes = new Set(scheduledExams.rows.map((row) => row.course_code));
-    const importableCourseCodes = courseCodes.filter((courseCode) => !scheduledCourseCodes.has(courseCode));
-    const skippedCourses = [...scheduledCourseCodes].sort().map((courseCode) => ({
-      courseCode,
-      reason: 'A scheduled exam already exists for this course.'
-    }));
-
-    if (importableCourseCodes.length === 0) {
-      return {
-        coursesProcessed: 0,
-        coursesSkipped: skippedCourses.length,
-        skippedCourses,
-        studentsCreated: 0,
-        enrollmentsStored: 0
-      };
+    if (scheduledExams.rowCount > 0) {
+      const scheduledCourseCodes = scheduledExams.rows.map((row) => row.course_code);
+      throw new AppError(
+        409,
+        'ENROLLMENT_IMPORT_LOCKED_BY_SCHEDULED_EXAMS',
+        `Course enrolments cannot be replaced because scheduled examinations exist for: ${scheduledCourseCodes.slice(0, 8).join(', ')}${scheduledCourseCodes.length > 8 ? ` and ${scheduledCourseCodes.length - 8} more` : ''}. Delete those examinations first.`,
+        { courseCodes: scheduledCourseCodes }
+      );
     }
 
-    const courseNames = importableCourseCodes.map((courseCode) => courses.get(courseCode).courseName);
+    const courseNames = courseCodes.map((courseCode) => courses.get(courseCode).courseName);
     const courseRows = await client.query(
       `INSERT INTO courses (course_code, course_name)
        SELECT source.course_code, source.course_name
@@ -441,11 +415,11 @@ export async function importCourseEnrollments(file, examPeriodId) {
        ON CONFLICT (course_code) DO UPDATE
        SET course_name = EXCLUDED.course_name
        RETURNING id, course_code`,
-      [importableCourseCodes, courseNames]
+      [courseCodes, courseNames]
     );
     const courseIdsByCode = new Map(courseRows.rows.map((course) => [course.course_code, course.id]));
     const rollNumbers = [
-      ...new Set(importableCourseCodes.flatMap((courseCode) => [...courses.get(courseCode).rollNumbers]))
+      ...new Set(courseCodes.flatMap((courseCode) => [...courses.get(courseCode).rollNumbers]))
     ];
     const newStudents = await client.query(
       `INSERT INTO students (roll_number)
@@ -459,17 +433,17 @@ export async function importCourseEnrollments(file, examPeriodId) {
       [rollNumbers]
     );
     const studentIdsByRollNumber = new Map(students.rows.map((student) => [student.roll_number, student.id]));
-    const courseIds = importableCourseCodes.map((courseCode) => courseIdsByCode.get(courseCode));
+    const courseIds = courseCodes.map((courseCode) => courseIdsByCode.get(courseCode));
 
     await client.query(
-      'DELETE FROM course_enrollments WHERE exam_period_id = $1 AND course_id = ANY($2::uuid[])',
-      [examPeriodId, courseIds]
+      'DELETE FROM course_enrollments WHERE exam_period_id = $1',
+      [examPeriodId]
     );
 
     const enrollmentCourseIds = [];
     const enrollmentStudentIds = [];
 
-    for (const courseCode of importableCourseCodes) {
+    for (const courseCode of courseCodes) {
       const course = courses.get(courseCode);
 
       for (const rollNumber of course.rollNumbers) {
@@ -486,9 +460,9 @@ export async function importCourseEnrollments(file, examPeriodId) {
     );
 
     return {
-      coursesProcessed: importableCourseCodes.length,
-      coursesSkipped: skippedCourses.length,
-      skippedCourses,
+      coursesProcessed: courseCodes.length,
+      coursesSkipped: 0,
+      skippedCourses: [],
       studentsCreated: newStudents.rowCount,
       enrollmentsStored: enrollmentCourseIds.length
     };

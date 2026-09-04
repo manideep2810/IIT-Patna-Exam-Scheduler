@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   deleteExamController,
   exportMyTimetableController,
+  getRoomAllocationSummaryController,
   getTimetableController,
   listRoomAvailabilityController,
   listSchedulableCoursesController,
@@ -19,6 +20,7 @@ scheduleRouter.get('/', listExamPeriodsController);
 scheduleRouter.get('/:examPeriodId/slots', listSlotsController);
 scheduleRouter.get('/:examPeriodId/schedulable-courses', listSchedulableCoursesController);
 scheduleRouter.get('/:examPeriodId/rooms', listRoomAvailabilityController);
+scheduleRouter.get('/:examPeriodId/room-allocations', getRoomAllocationSummaryController);
 scheduleRouter.post('/:examPeriodId/exams', scheduleExamController);
 scheduleRouter.delete('/:examPeriodId/exams/:examId', deleteExamController);
 scheduleRouter.get('/:examPeriodId/timetable', getTimetableController);

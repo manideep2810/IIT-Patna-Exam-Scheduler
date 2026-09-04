@@ -1,5 +1,6 @@
 import {
   deleteExam,
+  getRoomAllocationSummary,
   getTimetable,
   listRoomAvailability,
   listSchedulableCourses,
@@ -30,6 +31,16 @@ export async function deleteExamController(request, response) {
 export async function getTimetableController(request, response) {
   const timetable = await getTimetable(request.params.examPeriodId, request.user);
   response.status(200).json(timetable);
+}
+
+export async function getRoomAllocationSummaryController(request, response) {
+  const allocation = await getRoomAllocationSummary(
+    request.params.examPeriodId,
+    request.query.examSlotId,
+    request.query.roomId,
+    request.user
+  );
+  response.status(200).json({ allocation });
 }
 
 export async function exportMyTimetableController(request, response) {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown,
+  AlertCircle, Armchair, ArrowRight, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown,
   Clock3, Download, FileDown, FileSpreadsheet, GraduationCap, KeyRound, LayoutDashboard, LogOut, MapPin,
   Menu, Moon, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sun, Trash2, Upload, UsersRound, X
 } from 'lucide-react';
@@ -34,6 +34,11 @@ function displaySession(slot) {
   return slot === 'MORNING' ? '09:30 – 12:30' : '14:30 – 17:30';
 }
 
+function displayPeriodSessionTimes(period) {
+  const time = (value, fallback) => typeof value === 'string' && value.length >= 5 ? value.slice(0, 5) : fallback;
+  return `Creates Morning ${time(period?.morningStartTime, '09:30')}–${time(period?.morningEndTime, '12:30')} and Afternoon ${time(period?.afternoonStartTime, '14:30')}–${time(period?.afternoonEndTime, '17:30')}.`;
+}
+
 function humanRole(role) {
   return role === 'SUPER_ADMIN' ? 'Super Administrator' : 'Department Administrator';
 }
@@ -58,6 +63,16 @@ function ToastViewport({ toasts, onDismiss }) {
       <div><strong>{toast.type === 'error' ? 'Action needs attention' : 'Update saved'}</strong><p>{toast.text}</p></div>
       <button className="icon-button" onClick={() => onDismiss(toast.id)} aria-label="Dismiss notification"><X size={16} /></button>
     </div>)}
+  </div>;
+}
+
+function ConfirmDialog({ title = 'Confirm deletion', description, detail, confirmLabel = 'Delete permanently', busy = false, onConfirm, onCancel }) {
+  return <div className="modal-backdrop confirm-backdrop" role="presentation">
+    <section className="modal-card confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-description">
+      <header className="confirm-dialog-header"><span className="confirm-warning-icon"><AlertCircle size={22}/></span><div><span className="eyebrow">Please confirm</span><h2 id="confirm-dialog-title">{title}</h2></div></header>
+      <div className="confirm-dialog-copy"><p id="confirm-dialog-description">{description}</p>{detail && <div className="confirm-dialog-note">{detail}</div>}</div>
+      <div className="modal-actions"><button className="secondary-button" type="button" onClick={onCancel} disabled={busy}>Keep it</button><button className="danger-button" type="button" onClick={onConfirm} disabled={busy}><Trash2 size={16}/>{busy ? 'Deleting…' : confirmLabel}</button></div>
+    </section>
   </div>;
 }
 
@@ -182,7 +197,7 @@ function LegacySidebar({ user, view, onView, onLogout, mobileOpen, setMobileOpen
 
 function Sidebar({ user, view, onView, onLogout, mobileOpen, setMobileOpen, periods, selectedId, onPeriodSelect, onCreatePeriod, theme, onThemeChange }) {
   const superAdmin = user.role === 'SUPER_ADMIN';
-  const nav = [{ id: 'overview', label: 'Timetable', icon: LayoutDashboard }, { id: 'schedule', label: 'Schedule exam', icon: CalendarDays }, ...(superAdmin ? [{ id: 'imports', label: 'Imports', icon: Upload }, { id: 'administration', label: 'Administration', icon: Settings2 }] : [])];
+  const nav = [{ id: 'overview', label: 'Timetable', icon: LayoutDashboard }, { id: 'schedule', label: 'Schedule exam', icon: CalendarDays }, { id: 'allocations', label: 'Allocations', icon: Armchair }, ...(superAdmin ? [{ id: 'imports', label: 'Imports', icon: Upload }, { id: 'administration', label: 'Administration', icon: Settings2 }] : [])];
   return <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}><div className="sidebar-top"><Brand/><button className="mobile-close icon-button" onClick={() => setMobileOpen(false)}><X/></button></div><section className="sidebar-period"><span className="nav-label">Active examination period</span><PeriodPicker sidebar periods={periods} selectedId={selectedId} onSelect={onPeriodSelect} superAdmin={superAdmin} onCreate={onCreatePeriod}/></section><div className="nav-label">Workspace</div><nav>{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => { onView(id); setMobileOpen(false); }}><Icon size={19}/><span>{label}</span></button>)}</nav><div className="sidebar-footer"><button className="nav-item theme-toggle" type="button" onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')} aria-pressed={theme === 'dark'}>{theme === 'dark' ? <Sun size={19}/> : <Moon size={19}/>}<span>{theme === 'dark' ? 'Light theme' : 'Dark theme'}</span></button><div className="user-card"><div className="user-initial">{user.email[0].toUpperCase()}</div><div><strong>{user.email}</strong><span>{humanRole(user.role)}</span></div></div><button className="nav-item logout" onClick={onLogout}><LogOut size={19}/><span>Sign out</span></button></div></aside>;
 }
 
@@ -192,7 +207,7 @@ function LegacyOverview({ timetable, selectedPeriod, canDelete, onDelete, downlo
   return <><section className="welcome-row"><div><span className="eyebrow">{selectedPeriod.name}</span><h1>Examination timetable</h1><p>Two fixed sessions each day, with real-time room capacity and clash protection.</p></div><button className="secondary-button" onClick={onDownload} disabled={downloading}><Download size={17}/>{downloading ? 'Preparing…' : 'Export CSV'}</button></section><section className="stat-grid"><Stat icon={CalendarDays} label="Scheduled examinations" value={exams.length}/><Stat icon={Clock3} label="Active sessions" value={slots.length}/><Stat icon={UsersRound} label="Candidate instances" value={candidates}/></section>{slots.length === 0 ? <EmptyState icon={CalendarDays} title="No examinations scheduled yet" text="Use Schedule exam to add the first course to a morning or afternoon session."/> : <div className="timetable-list">{slots.map((slot) => <section className="slot-card" key={slot.id}><header><div className="slot-date"><span>{displayDate(slot.examDate)}</span><strong>{slot.session === 'MORNING' ? 'Morning session' : 'Afternoon session'}</strong></div><span className="time-pill"><Clock3 size={15}/>{displaySession(slot.session)}</span></header><div className="exam-grid">{slot.exams.map((exam) => <article className="exam-card" key={exam.id}><div className="exam-card-top"><div><span className="course-code">{exam.course.courseCode}</span><h3>{exam.course.courseName || 'Course examination'}</h3></div>{canDelete && <button className="delete-button" onClick={() => onDelete(exam)} aria-label={`Delete ${exam.course.courseCode}`}><Trash2 size={17}/></button>}</div><div className="exam-meta"><span><UsersRound size={15}/>{exam.candidateCount} candidates</span></div><div className="allocation-list">{exam.roomAllocations.map((room) => <span key={room.roomId}><MapPin size={14}/>{room.roomNumber}{room.location ? ` · ${room.location}` : ''}<b>{room.seatsReserved} seats</b></span>)}</div></article>)}</div></section>)}</div>}</>;
 }
 
-function Stat({ icon: Icon, label, value }) { return <article className="stat-card"><div className="stat-icon"><Icon size={20}/></div><div><span>{label}</span><strong>{value}</strong></div></article>; }
+function Stat({ icon: Icon, label, value, detail }) { return <article className="stat-card"><div className="stat-icon"><Icon size={20}/></div><div><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div></article>; }
 function EmptyState({ icon: Icon, title, text }) { return <section className="empty-state"><div className="empty-icon"><Icon size={28}/></div><h2>{title}</h2><p>{text}</p></section>; }
 
 function ExamCard({ exam, canDelete, onDelete }) {
@@ -214,16 +229,112 @@ function TimetableSession({ slot, canDelete, onDelete }) {
   </section>;
 }
 
+function datesInPeriod(period) {
+  if (!period?.startDate || !period?.endDate) return [];
+  const dates = [];
+  const cursor = new Date(`${period.startDate.slice(0, 10)}T00:00:00Z`);
+  const end = period.endDate.slice(0, 10);
+  while (cursor.toISOString().slice(0, 10) <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function TimetableDateNavigator({ period, selectedDate, onSelectDate }) {
+  const dates = useMemo(() => datesInPeriod(period), [period?.id, period?.startDate, period?.endDate]);
+  const selectedIndex = Math.max(0, dates.indexOf(selectedDate));
+  const windowSize = 7;
+  const start = Math.min(Math.max(0, selectedIndex - Math.floor(windowSize / 2)), Math.max(0, dates.length - windowSize));
+  const visibleDates = dates.slice(start, start + windowSize);
+  const dayFormatter = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'UTC' });
+  const numberFormatter = new Intl.DateTimeFormat('en-IN', { day: 'numeric', timeZone: 'UTC' });
+  const move = (offset) => { const target = dates[selectedIndex + offset]; if (target) onSelectDate(target); };
+
+  return <section className="timetable-date-nav" aria-label="Choose timetable date">
+    <div className="date-nav-title"><CalendarDays size={18}/><strong>{displayDate(selectedDate)}</strong><span>Selected date</span></div>
+    <div className="date-nav-controls"><button className="date-nav-arrow" onClick={() => move(-1)} disabled={selectedIndex === 0} aria-label="Previous date"><ChevronDown size={18}/></button><div className="date-nav-days">{visibleDates.map((date) => <button key={date} className={date === selectedDate ? 'selected' : ''} onClick={() => onSelectDate(date)} aria-label={`View ${displayDate(date)}`}><span>{dayFormatter.format(new Date(`${date}T00:00:00Z`))}</span><strong>{numberFormatter.format(new Date(`${date}T00:00:00Z`))}</strong></button>)}</div><button className="date-nav-arrow next" onClick={() => move(1)} disabled={selectedIndex === dates.length - 1} aria-label="Next date"><ChevronDown size={18}/></button></div>
+  </section>;
+}
+
 function Overview({ timetable, selectedPeriod, canDelete, onDelete, downloading, onDownload, onRefresh }) {
-  if (!selectedPeriod) return <EmptyState icon={CalendarDays} title="Choose an examination period" text="Choose an examination period from the sidebar to view its timetable." />;
+  const [selectedDate, setSelectedDate] = useState('');
   const slots = timetable?.slots ?? [];
+  useEffect(() => {
+    if (!selectedPeriod?.startDate || !selectedPeriod?.endDate) return;
+    const startDate = selectedPeriod.startDate.slice(0, 10);
+    const endDate = selectedPeriod.endDate.slice(0, 10);
+    setSelectedDate((current) => current >= startDate && current <= endDate ? current : startDate);
+  }, [selectedPeriod?.id, selectedPeriod?.startDate, selectedPeriod?.endDate]);
+  if (!selectedPeriod) return <EmptyState icon={CalendarDays} title="Choose an examination period" text="Choose an examination period from the sidebar to view its timetable." />;
   const exams = slots.flatMap((slot) => slot.exams);
   const candidates = exams.reduce((total, exam) => total + Number(exam.candidateCount ?? 0), 0);
+  const selectedSlots = slots.filter((slot) => slot.examDate?.slice(0, 10) === selectedDate);
   return <>
     <section className="welcome-row"><div><span className="eyebrow">{selectedPeriod.name}</span><h1>Examination timetable</h1><p>Live schedule, room capacity, and student-clash protection in one workspace.</p></div><div className="welcome-actions"><button className="icon-button outlined" onClick={onRefresh} aria-label="Refresh timetable" title="Refresh timetable"><RefreshCw size={17}/></button><button className="secondary-button" onClick={onDownload} disabled={downloading}><Download size={17}/>{downloading ? 'Preparing…' : 'Export CSV'}</button></div></section>
     <section className="stat-grid"><Stat icon={CalendarDays} label="Scheduled examinations" value={exams.length}/><Stat icon={Clock3} label="Active sessions" value={slots.length}/><Stat icon={UsersRound} label="Candidate instances" value={candidates}/></section>
-    {slots.length === 0 ? <EmptyState icon={CalendarDays} title="No examinations scheduled yet" text="Use Schedule exam to add the first course to a morning or afternoon session."/> : <div className="timetable-list">{slots.map((slot) => <TimetableSession key={slot.id} slot={slot} canDelete={canDelete} onDelete={onDelete}/>)}</div>}
+    <TimetableDateNavigator period={selectedPeriod} selectedDate={selectedDate || selectedPeriod.startDate.slice(0, 10)} onSelectDate={setSelectedDate}/>
+    {selectedSlots.length === 0 ? <EmptyState icon={CalendarDays} title={`No sessions on ${displayDate(selectedDate || selectedPeriod.startDate.slice(0, 10))}`} text="Select another date above, or create the morning and afternoon sessions before scheduling examinations."/> : <div className="timetable-list">{selectedSlots.map((slot) => <TimetableSession key={slot.id} slot={slot} canDelete={canDelete} onDelete={onDelete}/>)}</div>}
   </>;
+}
+
+const SEAT_COLOURS = ['teal', 'blue', 'amber', 'plum', 'coral', 'slate'];
+
+function buildSeatPlan(capacity, courseAllocations) {
+  const perRow = Math.ceil(capacity / 4);
+  const rows = Array.from({ length: 4 }, (_, rowIndex) => Array.from({ length: Math.max(0, Math.min(perRow, capacity - (rowIndex * perRow))) }, (_, columnIndex) => ({ rowIndex, columnIndex, benchNumber: columnIndex + 1 })));
+  const primary = [];
+  const secondary = [];
+
+  rows.forEach((row, rowIndex) => row.forEach((seat) => ((seat.columnIndex % 2 === rowIndex % 2) ? primary : secondary).push(seat)));
+  const availableBenches = [primary, secondary];
+
+  courseAllocations.forEach((course, courseIndex) => {
+    course.students.forEach((rollNumber) => {
+      const preferredBenches = availableBenches[courseIndex % 2];
+      const alternateBenches = availableBenches[(courseIndex + 1) % 2];
+      const seat = preferredBenches.shift() ?? alternateBenches.shift();
+      if (seat) seat.student = { rollNumber, courseCode: course.courseCode, courseIndex };
+    });
+  });
+
+  return { rows, perRow };
+}
+
+function AllocationSeatPlan({ allocation }) {
+  const plan = useMemo(() => buildSeatPlan(allocation.room.capacity, allocation.courseAllocations), [allocation]);
+  const renderBench = (seat) => <div key={`${seat.rowIndex}-${seat.columnIndex}`} className={`seat-bench ${seat.student ? `filled ${SEAT_COLOURS[seat.student.courseIndex % SEAT_COLOURS.length]}` : 'vacant'}`} title={seat.student ? `${seat.student.rollNumber} · ${seat.student.courseCode}` : `Bench ${seat.benchNumber} is vacant`}><small>Bench {seat.benchNumber}</small>{seat.student ? <><strong>{seat.student.rollNumber}</strong><span>{seat.student.courseCode}</span></> : <span>Vacant</span>}</div>;
+  return <section className="seating-plan-card"><div className="seating-plan-heading"><div><span className="eyebrow">Visual seating plan</span><h2>Classroom bench layout</h2><p>Each seating column flows from the front of the classroom to the back. Students are arranged by sorted roll number on alternating benches.</p></div><span>{allocation.room.capacity} benches</span></div><div className="seat-legend">{allocation.courseAllocations.map((course, index) => <span key={course.examId}><i className={`seat-swatch ${SEAT_COLOURS[index % SEAT_COLOURS.length]}`}/>{course.courseCode}</span>)}<span><i className="seat-swatch vacant"/>Vacant</span></div><div className="classroom-layout vertical-classroom"><div className="classroom-front"><span>Front of classroom</span><strong>Board / Invigilator desk</strong></div><div className="classroom-rows">{plan.rows.map((row, rowIndex) => <div className="seat-row" key={rowIndex}><span className="seat-row-label">Column {rowIndex + 1}</span><div className="seat-row-benches">{row.map(renderBench)}</div></div>)}</div></div></section>;
+}
+
+function Allocations({ token, period, timetable, notify }) {
+  const slots = timetable?.slots ?? [];
+  const [slotId, setSlotId] = useState('');
+  const [roomId, setRoomId] = useState('');
+  const [allocation, setAllocation] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const selectedSlot = slots.find((slot) => slot.id === slotId);
+  const roomOptions = useMemo(() => {
+    const rooms = new Map();
+    selectedSlot?.exams.forEach((exam) => exam.roomAllocations.forEach((room) => rooms.set(room.roomId, room)));
+    return [...rooms.values()].sort((first, second) => first.roomNumber.localeCompare(second.roomNumber));
+  }, [selectedSlot]);
+
+  useEffect(() => { setSlotId(slots[0]?.id ?? ''); }, [period?.id, slots.length]);
+  useEffect(() => { setRoomId(roomOptions[0]?.roomId ?? ''); }, [slotId, roomOptions.length]);
+  useEffect(() => {
+    if (!period || !slotId || !roomId) { setAllocation(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    api.roomAllocation(token, period.id, slotId, roomId).then((response) => { if (!cancelled) setAllocation(response.allocation); }).catch((error) => { if (!cancelled) { setAllocation(null); notify('error', friendlyError(error)); } }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, period?.id, slotId, roomId]);
+
+  if (!period) return <EmptyState icon={MapPin} title="Choose an examination period" text="Select an examination period from the sidebar to review room-wise allocations."/>;
+  if (slots.length === 0) return <EmptyState icon={MapPin} title="No room allocations yet" text="Scheduled examinations will appear here with their room and student seating plans."/>;
+  const representedSeats = allocation?.courseAllocations.reduce((total, course) => total + course.students.length, 0) ?? 0;
+
+  return <><section className="welcome-row"><div><span className="eyebrow">Room management</span><h1>Room allocations</h1><p>Review scheduled courses, assigned students, and remaining capacity for each examination room.</p></div></section><section className="allocation-picker"><label>Examination session<select value={slotId} onChange={(event) => setSlotId(event.target.value)}>{slots.map((slot) => <option key={slot.id} value={slot.id}>{displayDate(slot.examDate)} · {slot.session === 'MORNING' ? 'Morning' : 'Afternoon'} ({displaySession(slot)})</option>)}</select></label><label>Room<select value={roomId} onChange={(event) => setRoomId(event.target.value)}>{roomOptions.map((room) => <option key={room.roomId} value={room.roomId}>{room.roomNumber}{room.location ? ` · ${room.location}` : ''}</option>)}</select></label></section>{loading || !allocation ? <ContentSkeleton variant="board"/> : <><section className="allocation-summary"><Stat icon={MapPin} label="Room" value={allocation.room.roomNumber} detail={allocation.room.location || 'Location not specified'}/><Stat icon={UsersRound} label="Seats allocated" value={`${allocation.room.reservedSeats} / ${allocation.room.capacity}`} detail={`${allocation.courseAllocations.length} scheduled course${allocation.courseAllocations.length === 1 ? '' : 's'}`}/><Stat icon={LayoutDashboard} label="Vacant benches" value={allocation.room.vacantSeats} detail={`${representedSeats} student${representedSeats === 1 ? '' : 's'} shown in the plan`}/></section><section className="allocation-course-card"><div className="section-heading"><div><span className="eyebrow">Scheduled in this room</span><h2>Course allocations</h2></div><span className="time-pill"><Clock3 size={15}/>{displaySession(allocation.slot)}</span></div><div className="allocation-course-grid">{allocation.courseAllocations.map((course, index) => <article key={course.examId} className={`allocation-course ${SEAT_COLOURS[index % SEAT_COLOURS.length]}`}><span className="course-code">{course.courseCode}</span><h3>{course.courseName}</h3><strong>{course.seatsReserved} seats reserved</strong><p>{course.students.length ? `${course.students[0]} – ${course.students[course.students.length - 1]}` : 'No students assigned'}</p></article>)}</div></section><AllocationSeatPlan allocation={allocation}/></>}</>;
 }
 
 function Scheduler({ token, period, slots, onDone, notify }) {
@@ -323,7 +434,7 @@ function UploadCard({ title, description, accept, onUpload, busy, disabled = fal
 
 function Imports({ token, period, notify }) { const [busy, setBusy] = useState(''); async function upload(key, path, file) { setBusy(key); try { const response = await api.upload(token, path, file); notify('success', response.message); } catch (error) { notify('error', friendlyError(error)); } finally { setBusy(''); } } return <><section className="welcome-row"><div><span className="eyebrow">Data management</span><h1>Import examination data</h1><p>Import validated source spreadsheets. Existing rooms and enrolments are safely synchronized.</p></div></section><div className="import-grid"><UploadCard title="Department access" description="Email in the first column, followed by course-code prefixes such as CS or EE." accept=".csv,.xlsx" busy={busy === 'permissions'} onUpload={(file) => upload('permissions', '/admin/imports/admin-course-permissions', file)}/><UploadCard title="Rooms and capacities" description="Import room number, location, and examination capacity. Room number is the unique key." accept=".csv,.xlsx" busy={busy === 'rooms'} onUpload={(file) => upload('rooms', '/admin/imports/rooms', file)}/><UploadCard title="Course enrolments" description={period ? `Upload enrolments for ${period.name}. Scheduled courses will be skipped.` : 'Choose an examination period above before uploading enrolments.'} accept=".csv,.xlsx" busy={busy === 'enrolments'} onUpload={(file) => upload('enrolments', `/admin/exam-periods/${period.id}/imports/course-enrollments`, file)}/></div></>; }
 
-function ImportedDataExplorer({ token, period, reloadKey, notify }) {
+function ImportedDataExplorer({ token, period, reloadKey, notify, onRecordsChanged }) {
   const [tab, setTab] = useState('permissions');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
@@ -332,6 +443,8 @@ function ImportedDataExplorer({ token, period, reloadKey, notify }) {
   const [pageSize, setPageSize] = useState(10);
   const [cachedResult, setResult] = useState({ tab: 'permissions', data: EMPTY_IMPORT_RESULT });
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState('');
+  const [pendingDeletion, setPendingDeletion] = useState(null);
   const cacheRef = useRef(new Map());
 
   useEffect(() => { setSearch(''); setFilter(''); setShowAdminsWithoutPrefixes(false); setPage(1); }, [tab, period?.id]);
@@ -375,21 +488,71 @@ function ImportedDataExplorer({ token, period, reloadKey, notify }) {
   const visibleResult = result;
   const totalPages = visibleResult.pagination.totalPages;
 
-  return <section className="import-data-section">
+  function deleteRecord(row) {
+    const isRoom = tab === 'rooms';
+    const label = isRoom ? `room ${row.roomNumber}` : `${row.courseCode} enrolments`;
+    const safeguard = isRoom ? ' Rooms assigned to an examination cannot be deleted.' : ' Courses with scheduled examinations cannot be deleted.';
+    setPendingDeletion({ type: 'one', row, title: `Delete ${label}?`, description: `This action permanently removes ${label} from the imported data.`, detail: safeguard.trim() });
+  }
+
+  async function performDeleteRecord(row) {
+    const isRoom = tab === 'rooms';
+    setDeleting(row.id);
+    try {
+      const response = isRoom
+        ? await api.deleteImportedRoom(token, row.id)
+        : await api.deleteImportedCourseEnrollment(token, period.id, row.id);
+      cacheRef.current.clear();
+      onRecordsChanged();
+      setPendingDeletion(null);
+      notify('success', response.message);
+    } catch (error) {
+      notify('error', friendlyError(error));
+    } finally {
+      setDeleting('');
+    }
+  }
+
+  function deleteAllRecords() {
+    const isRoom = tab === 'rooms';
+    const label = isRoom ? 'all imported rooms' : `all course enrolments for ${period.name}`;
+    const safeguard = isRoom ? ' Rooms allocated to examinations will prevent this action.' : ' Scheduled examinations will prevent this action.';
+    setPendingDeletion({ type: 'all', title: `Delete ${label}?`, description: `This permanently removes ${label}. This cannot be undone.`, detail: safeguard.trim() });
+  }
+
+  async function performDeleteAllRecords() {
+    const isRoom = tab === 'rooms';
+    setDeleting('all');
+    try {
+      const response = isRoom
+        ? await api.deleteAllImportedRooms(token)
+        : await api.deleteAllImportedCourseEnrollments(token, period.id);
+      cacheRef.current.clear();
+      onRecordsChanged();
+      setPendingDeletion(null);
+      notify('success', response.message);
+    } catch (error) {
+      notify('error', friendlyError(error));
+    } finally {
+      setDeleting('');
+    }
+  }
+
+  return <><section className="import-data-section">
     <div className="import-data-heading"><div><span className="eyebrow">Imported data</span><h2>Review synchronized records</h2><p>Search and filter the data currently available to the scheduling engine.</p></div><span className="record-count">{visibleResult.pagination.total} records</span></div>
     <div className="data-tabs" role="tablist">{tabs.map((item) => <button key={item.id} role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => { if (tab !== item.id) { setLoading(true); setTab(item.id); } }}><strong>{item.label}</strong><span>{item.count}</span></button>)}</div>
-    <div className="data-toolbar"><label className="table-search"><Search size={18}/><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={tab === 'rooms' ? 'Search room or block' : tab === 'permissions' ? 'Search email or course prefix' : 'Search course code or name'} /></label>{tab === 'rooms' && <select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} aria-label="Filter by location"><option value="">All locations</option>{(visibleResult.filters?.locations ?? []).map((location) => <option key={location} value={location}>{location}</option>)}</select>}{tab === 'permissions' && <select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option></select>}<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} aria-label="Rows per page"><option value="10">10 per page</option><option value="25">25 per page</option><option value="50">50 per page</option></select></div>
+    <div className="data-toolbar"><label className="table-search"><Search size={18}/><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={tab === 'rooms' ? 'Search room or block' : tab === 'permissions' ? 'Search email or course prefix' : 'Search course code or name'} /></label>{tab === 'rooms' && <select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} aria-label="Filter by location"><option value="">All locations</option>{(visibleResult.filters?.locations ?? []).map((location) => <option key={location} value={location}>{location}</option>)}</select>}{tab === 'permissions' && <select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option></select>}<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} aria-label="Rows per page"><option value="10">10 per page</option><option value="25">25 per page</option><option value="50">50 per page</option></select>{(tab === 'rooms' || tab === 'enrollments') && <button className="danger-button" disabled={loading || deleting === 'all' || result.pagination.total === 0} onClick={deleteAllRecords}><Trash2 size={16}/>{deleting === 'all' ? 'Deleting…' : 'Delete all'}</button>}</div>
     {tab === 'permissions' && <div className="prefix-toggle-row"><label className="filter-toggle"><input type="checkbox" checked={showAdminsWithoutPrefixes} onChange={(event) => { setShowAdminsWithoutPrefixes(event.target.checked); setPage(1); }}/><span>Show administrators with no course prefixes</span></label><span>Hidden by default to focus on assigned course access.</span></div>}
-    <div className="data-table-wrap">{loading ? <ContentSkeleton variant="table"/> : <table className="data-table">{tab === 'permissions' && <><thead><tr><th>Department Administrator</th><th>Status</th><th>Course prefixes</th></tr></thead><tbody>{result.rows.map((row) => { const prefixes = Array.isArray(row.coursePrefixes) ? row.coursePrefixes : []; return <tr key={row.id}><td><strong>{row.email}</strong></td><td><span className={`status-chip ${row.isActive ? 'active' : 'inactive'}`}>{row.isActive ? 'Active' : 'Inactive'}</span></td><td><div className="prefix-chips">{prefixes.length ? prefixes.map((prefix) => <span key={prefix}>{prefix}</span>) : <em>No prefixes imported</em>}</div></td></tr>; })}</tbody></>}{tab === 'rooms' && <><thead><tr><th>Room</th><th>Location / block</th><th>Exam capacity</th><th>Status</th></tr></thead><tbody>{result.rows.map((row) => <tr key={row.id}><td><strong>{row.roomNumber}</strong></td><td>{row.location}</td><td><b>{row.examCapacity}</b> seats</td><td><span className={`status-chip ${row.isActive ? 'active' : 'inactive'}`}>{row.isActive ? 'Active' : 'Inactive'}</span></td></tr>)}</tbody></>}{tab === 'enrollments' && <><thead><tr><th>Course code</th><th>Course name</th><th>Enrolled candidates</th></tr></thead><tbody>{result.rows.map((row) => <tr key={row.id}><td><strong>{row.courseCode}</strong></td><td>{row.courseName || '—'}</td><td><b>{row.candidateCount}</b> candidates</td></tr>)}</tbody></>}</table>}{!loading && result.rows.length === 0 && <div className="table-empty">No matching records found.</div>}</div>
+    <div className="data-table-wrap">{loading ? <ContentSkeleton variant="table"/> : <table className="data-table">{tab === 'permissions' && <><thead><tr><th>Department Administrator</th><th>Status</th><th>Course prefixes</th></tr></thead><tbody>{result.rows.map((row) => { const prefixes = Array.isArray(row.coursePrefixes) ? row.coursePrefixes : []; return <tr key={row.id}><td><strong>{row.email}</strong></td><td><span className={`status-chip ${row.isActive ? 'active' : 'inactive'}`}>{row.isActive ? 'Active' : 'Inactive'}</span></td><td><div className="prefix-chips">{prefixes.length ? prefixes.map((prefix) => <span key={prefix}>{prefix}</span>) : <em>No prefixes imported</em>}</div></td></tr>; })}</tbody></>}{tab === 'rooms' && <><thead><tr><th>Room</th><th>Location / block</th><th>Exam capacity</th><th>Status</th><th aria-label="Actions"/></tr></thead><tbody>{result.rows.map((row) => <tr key={row.id}><td><strong>{row.roomNumber}</strong></td><td>{row.location}</td><td><b>{row.examCapacity}</b> seats</td><td><span className={`status-chip ${row.isActive ? 'active' : 'inactive'}`}>{row.isActive ? 'Active' : 'Inactive'}</span></td><td><button className="table-delete-button" disabled={Boolean(deleting)} onClick={() => deleteRecord(row)} aria-label={`Delete room ${row.roomNumber}`} title={`Delete room ${row.roomNumber}`}><Trash2 size={16}/></button></td></tr>)}</tbody></>}{tab === 'enrollments' && <><thead><tr><th>Course code</th><th>Course name</th><th>Enrolled candidates</th><th aria-label="Actions"/></tr></thead><tbody>{result.rows.map((row) => <tr key={row.id}><td><strong>{row.courseCode}</strong></td><td>{row.courseName || '—'}</td><td><b>{row.candidateCount}</b> candidates</td><td><button className="table-delete-button" disabled={Boolean(deleting)} onClick={() => deleteRecord(row)} aria-label={`Delete ${row.courseCode} enrolments`} title={`Delete ${row.courseCode} enrolments`}><Trash2 size={16}/></button></td></tr>)}</tbody></>}</table>}{!loading && result.rows.length === 0 && <div className="table-empty">No matching records found.</div>}</div>
     <footer className="table-pagination"><span>Showing {result.rows.length ? ((result.pagination.page - 1) * result.pagination.pageSize) + 1 : 0}–{Math.min(result.pagination.page * result.pagination.pageSize, result.pagination.total)} of {result.pagination.total}</span><div><button className="secondary-button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><span>Page {page} of {totalPages}</span><button className="secondary-button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</button></div></footer>
-  </section>;
+  </section>{pendingDeletion && <ConfirmDialog title={pendingDeletion.title} description={pendingDeletion.description} detail={pendingDeletion.detail} busy={Boolean(deleting)} onCancel={() => setPendingDeletion(null)} onConfirm={() => pendingDeletion.type === 'one' ? performDeleteRecord(pendingDeletion.row) : performDeleteAllRecords()}/>}</>;
 }
 
 function ImportsExplorer({ token, period, notify }) {
   const [busy, setBusy] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   async function upload(key, path, file) { setBusy(key); try { const response = await api.upload(token, path, file); setReloadKey((value) => value + 1); notify('success', response.message); } catch (error) { notify('error', friendlyError(error)); } finally { setBusy(''); } }
-  return <><section className="welcome-row"><div><span className="eyebrow">Data management</span><h1>Import examination data</h1><p>Import validated source spreadsheets, then review the synchronized records below.</p></div></section><div className="import-grid"><UploadCard title="Department access" description="Email in the first column, followed by course-code prefixes such as CS or EE." templateUrl="/templates/department-access-template.csv" accept=".csv,.xlsx" busy={busy === 'permissions'} onUpload={(file) => upload('permissions', '/admin/imports/admin-course-permissions', file)}/><UploadCard title="Rooms and capacities" description="Import room number, required location/block, and examination capacity." templateUrl="/templates/rooms-template.csv" accept=".csv,.xlsx" busy={busy === 'rooms'} onUpload={(file) => upload('rooms', '/admin/imports/rooms', file)}/><UploadCard title="Course enrolments" description={`Upload enrolments for ${period.name}. Scheduled courses will be skipped.`} templateUrl="/templates/course-enrolments-template.csv" accept=".csv,.xlsx" busy={busy === 'enrolments'} onUpload={(file) => upload('enrolments', `/admin/exam-periods/${period.id}/imports/course-enrollments`, file)}/></div><ImportedDataExplorer token={token} period={period} reloadKey={reloadKey} notify={notify}/></>;
+  return <><section className="welcome-row"><div><span className="eyebrow">Data management</span><h1>Import examination data</h1><p>Each valid rooms or enrolments file replaces the corresponding imported dataset in full.</p></div></section><div className="import-grid"><UploadCard title="Department access" description="Email in the first column, followed by course-code prefixes such as CS or EE." templateUrl="/templates/department-access-template.csv" accept=".csv,.xlsx" busy={busy === 'permissions'} onUpload={(file) => upload('permissions', '/admin/imports/admin-course-permissions', file)}/><UploadCard title="Rooms and capacities" description="A valid file replaces every imported room. Existing exam allocations must be removed first." templateUrl="/templates/rooms-template.csv" accept=".csv,.xlsx" busy={busy === 'rooms'} onUpload={(file) => upload('rooms', '/admin/imports/rooms', file)}/><UploadCard title="Course enrolments" description={`A valid file replaces all enrolments for ${period.name}. Scheduled examinations must be removed first.`} templateUrl="/templates/course-enrolments-template.csv" accept=".csv,.xlsx" busy={busy === 'enrolments'} onUpload={(file) => upload('enrolments', `/admin/exam-periods/${period.id}/imports/course-enrollments`, file)}/></div><ImportedDataExplorer token={token} period={period} reloadKey={reloadKey} notify={notify} onRecordsChanged={() => setReloadKey((value) => value + 1)}/></>;
 }
 
 function Administration({ token, periods, period, onPeriodDataChanged, notify }) {
@@ -409,7 +572,7 @@ function Administration({ token, periods, period, onPeriodDataChanged, notify })
     <section className="welcome-row"><div><span className="eyebrow">Access control</span><h1>Department administrators</h1><p>Create Department Admin accounts, issue temporary passwords, and manage their access to the examination workspace.</p></div></section>
     <div className="admin-layout">
       <section className="form-card"><div className="section-heading"><div><span className="eyebrow">New account</span><h2>Create Department Admin</h2></div><UsersRound size={22}/></div><form onSubmit={addAdmin}><label>IIT Patna email<input type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="department@iitp.ac.in" required/></label><label>Temporary password<input type="password" autoComplete="new-password" minLength="8" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="At least 8 characters" required/></label><p className="field-note">The administrator will be required to replace this temporary password at their first sign in.</p><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Creating…' : <><Plus size={17}/>Create Department Admin</>}</button></form></section>
-      <section className="form-card"><div className="section-heading"><div><span className="eyebrow">Session setup</span><h2>Add two fixed sessions</h2></div><Clock3 size={22}/></div>{period ? <form onSubmit={generateSlots}><label>Examination date<input type="date" min={period.startDate} max={period.endDate} value={slotDate} onChange={(event) => setSlotDate(event.target.value)} required/></label><p className="field-note">Creates Morning 09:30–12:30 and Afternoon 14:30–17:30.</p><button className="secondary-button" disabled={busy === 'slots'}>{busy === 'slots' ? 'Creating…' : 'Create sessions'}</button></form> : <p className="muted">Choose an examination period above to create sessions.</p>}</section>
+      <section className="form-card"><div className="section-heading"><div><span className="eyebrow">Session setup</span><h2>Add two fixed sessions</h2></div><Clock3 size={22}/></div>{period ? <form onSubmit={generateSlots}><label>Examination date<input type="date" min={period.startDate} max={period.endDate} value={slotDate} onChange={(event) => setSlotDate(event.target.value)} required/></label><p className="field-note">{displayPeriodSessionTimes(period)}</p><button className="secondary-button" disabled={busy === 'slots'}>{busy === 'slots' ? 'Creating…' : 'Create sessions'}</button></form> : <p className="muted">Choose an examination period above to create sessions.</p>}</section>
       <section className="form-card"><div className="section-heading"><div><span className="eyebrow">Timetable reports</span><h2>Export CSV</h2></div><Download size={22}/></div><p className="muted">Download a consolidated timetable or a prefix-scoped departmental timetable.</p><button className="secondary-button full-width" disabled={!period || busy === 'consolidated'} onClick={() => download('consolidated')}>{busy === 'consolidated' ? 'Preparing…' : <><Download size={17}/>Consolidated timetable</>}</button></section>
     </div>
     <section className="admin-list-section"><div className="section-heading"><div><span className="eyebrow">Department accounts</span><h2>Department Administrators</h2></div><button className="icon-button outlined" onClick={loadAdmins} aria-label="Refresh administrators"><RefreshCw size={17}/></button></div>{loading ? <ContentSkeleton variant="table"/> : admins.length === 0 ? <p className="muted empty-copy">No Department Admin accounts have been created yet.</p> : <div className="admin-table"><div className="admin-head"><span>Administrator</span><span>Status</span><span>Access</span><span>Actions</span></div>{admins.map((admin) => <div className="admin-row" key={admin.id}><div><strong>{admin.email}</strong><small>{admin.departmentCode || 'Prefix-based course access'}</small></div><span className={`status-chip ${admin.isActive ? 'active' : 'inactive'}`}>{admin.isActive ? 'Active' : 'Inactive'}</span><span>{admin.mustChangePassword ? 'Password change required' : 'Password set'}</span><div className="row-actions"><button className="text-button" disabled={busy === admin.id} onClick={() => resetPassword(admin)}>Set password</button><button className="text-button" disabled={busy === admin.id} onClick={() => toggleAdmin(admin)}>{admin.isActive ? 'Deactivate' : 'Activate'}</button><button className="icon-button outlined" disabled={!period || busy === `department-${admin.id}`} onClick={() => download(`department-${admin.id}`, admin.id)} title="Export timetable"><Download size={16}/></button></div></div>)}</div>}</section>
@@ -418,7 +581,7 @@ function Administration({ token, periods, period, onPeriodDataChanged, notify })
 }
 
 function Dashboard({ token, user, onLogout }) {
-  const superAdmin = user.role === 'SUPER_ADMIN'; const [view, setView] = useState('overview'); const [periods, setPeriods] = useState([]); const [periodId, setPeriodId] = useState(localStorage.getItem('iitp.selected-period') ?? ''); const [timetable, setTimetable] = useState(null); const [slots, setSlots] = useState([]); const [loading, setLoading] = useState(true); const [toasts, setToasts] = useState([]); const [mobileOpen, setMobileOpen] = useState(false); const [downloadBusy, setDownloadBusy] = useState(false); const [theme, setTheme] = useState(() => localStorage.getItem('iitp.theme') ?? 'light'); const periodRequestRef = useRef(0); const toastSequenceRef = useRef(0);
+  const superAdmin = user.role === 'SUPER_ADMIN'; const [view, setView] = useState('overview'); const [periods, setPeriods] = useState([]); const [periodId, setPeriodId] = useState(localStorage.getItem('iitp.selected-period') ?? ''); const [timetable, setTimetable] = useState(null); const [slots, setSlots] = useState([]); const [loading, setLoading] = useState(true); const [toasts, setToasts] = useState([]); const [mobileOpen, setMobileOpen] = useState(false); const [downloadBusy, setDownloadBusy] = useState(false); const [theme, setTheme] = useState(() => localStorage.getItem('iitp.theme') ?? 'light'); const [examPendingDeletion, setExamPendingDeletion] = useState(null); const [deletingExam, setDeletingExam] = useState(false); const periodRequestRef = useRef(0); const toastSequenceRef = useRef(0);
   const period = periods.find((item) => item.id === periodId);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('iitp.theme', theme); }, [theme]);
   function dismissToast(id) { setToasts((current) => current.filter((toast) => toast.id !== id)); }
@@ -451,7 +614,8 @@ function Dashboard({ token, user, onLogout }) {
   useEffect(() => { setLoading(true); loadPeriods().catch((error) => notify('error', friendlyError(error))).finally(() => setLoading(false)); }, [token]);
   useEffect(() => { if (!periodId) return; localStorage.setItem('iitp.selected-period', periodId); loadPeriodData(periodId).catch((error) => notify('error', friendlyError(error))); }, [periodId]);
   async function createPeriod(data) { const result = await api.createExamPeriod(token, data); await loadPeriods(); setPeriodId(result.examPeriod.id); notify('success', `${result.examPeriod.name} was created.`); }
-  async function removeExam(exam) { if (!window.confirm(`Delete the ${exam.course.courseCode} examination? This releases its room reservations and cannot be undone.`)) return; try { await api.deleteExam(token, periodId, exam.id); await loadPeriodData(); notify('success', `${exam.course.courseCode} was deleted and its room capacity released.`); } catch (error) { notify('error', friendlyError(error)); } }
+  function removeExam(exam) { setExamPendingDeletion(exam); }
+  async function confirmRemoveExam() { if (!examPendingDeletion) return; setDeletingExam(true); try { await api.deleteExam(token, periodId, examPendingDeletion.id); await loadPeriodData(); notify('success', `${examPendingDeletion.course.courseCode} was deleted and its room capacity released.`); setExamPendingDeletion(null); } catch (error) { notify('error', friendlyError(error)); } finally { setDeletingExam(false); } }
   async function exportTimetable() { setDownloadBusy(true); try { if (superAdmin) await api.exportConsolidated(token, periodId); else await api.exportMyTimetable(token, periodId); } catch (error) { notify('error', friendlyError(error)); } finally { setDownloadBusy(false); } }
   /* Replaced by the readable markup below.
   return <div className="app-shell"><Sidebar user={user} view={view} onView={setView} onLogout={onLogout} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}/><main className="app-main"><header className="topbar"><button className="mobile-menu icon-button outlined" onClick={() => setMobileOpen(true)}><Menu/></button><PeriodPicker periods={periods} selectedId={periodId} onSelect={setPeriodId} superAdmin={superAdmin} onCreate={createPeriod}/><div className="topbar-role"><ShieldCheck size={17}/>{superAdmin ? 'Super Admin' : 'Department Admin'}</div></header><div className="content"><Notice notice={notice} onClose={() => setNotice(null)}/>{loading ? <LoadingState/> : <>{view === 'overview' && <Overview timetable={timetable} selectedPeriod={period} canDelete={Boolean(period)} onDelete={removeExam} downloading={downloadBusy} onDownload={exportTimetable}/>{view === 'schedule' && <Scheduler token={token} period={period} slots={slots} notify={notify} onDone={() => loadPeriodData()}/>{view === 'imports' && superAdmin && <Imports token={token} period={period} notify={notify}/>{view === 'administration' && superAdmin && <Administration token={token} periods={periods} period={period} onPeriodsChanged={loadPeriods} notify={notify}/>}</>}</div></main></div>;
@@ -467,11 +631,12 @@ function Dashboard({ token, user, onLogout }) {
         {loading ? <DashboardSkeleton/> : <>
           {view === 'overview' && <Overview timetable={timetable} selectedPeriod={period} canDelete={Boolean(period)} onDelete={removeExam} downloading={downloadBusy} onDownload={exportTimetable} onRefresh={() => loadPeriodData()}/>} 
           {view === 'schedule' && <Scheduler token={token} period={period} slots={period ? slots.filter((slot) => slot.examDate >= period.startDate && slot.examDate <= period.endDate) : []} notify={notify} onDone={() => loadPeriodData()}/>} 
+          {view === 'allocations' && <Allocations token={token} period={period} timetable={timetable} notify={notify}/>} 
           {view === 'imports' && superAdmin && (period ? <ImportsExplorer token={token} period={period} notify={notify}/> : <EmptyState icon={FileSpreadsheet} title="Create an examination period first" text="Course enrolments belong to an examination period. Use New period above before importing data."/>)} 
           {view === 'administration' && superAdmin && <Administration token={token} periods={periods} period={period} onPeriodDataChanged={() => loadPeriodData()} notify={notify}/>} 
         </>}
       </div>
-    </main>
+    </main>{examPendingDeletion && <ConfirmDialog title={`Delete ${examPendingDeletion.course.courseCode} examination?`} description={`This removes ${examPendingDeletion.course.courseName} from the timetable and permanently releases its room reservations.`} detail="Students can be re-scheduled only by creating the examination again." busy={deletingExam} onCancel={() => setExamPendingDeletion(null)} onConfirm={confirmRemoveExam}/>} 
   </div>;
 }
 

@@ -21,6 +21,10 @@ import { authenticate, requirePasswordChanged, requireRole } from '../middleware
 import { uploadSingleSpreadsheet } from '../middleware/upload.js';
 import { createSlotsController, listSlotsController } from '../controllers/slot.controller.js';
 import {
+  deleteAllCourseEnrollmentImportDataController,
+  deleteAllRoomsImportDataController,
+  deleteCourseEnrollmentImportDataController,
+  deleteRoomImportDataController,
   listCourseEnrollmentSummariesController,
   listDepartmentPrefixPermissionsController,
   listRoomsForImportDataController
@@ -38,7 +42,11 @@ adminRouter.get('/exam-periods', listExamPeriodsController);
 adminRouter.post('/exam-periods/:examPeriodId/slots', createSlotsController);
 adminRouter.get('/exam-periods/:examPeriodId/slots', listSlotsController);
 adminRouter.get('/exam-periods/:examPeriodId/course-enrollments', listCourseEnrollmentSummariesController);
+adminRouter.delete('/exam-periods/:examPeriodId/course-enrollments', deleteAllCourseEnrollmentImportDataController);
+adminRouter.delete('/exam-periods/:examPeriodId/course-enrollments/:courseId', deleteCourseEnrollmentImportDataController);
 adminRouter.get('/rooms', listRoomsForImportDataController);
+adminRouter.delete('/rooms', deleteAllRoomsImportDataController);
+adminRouter.delete('/rooms/:roomId', deleteRoomImportDataController);
 adminRouter.get('/course-prefix-permissions', listDepartmentPrefixPermissionsController);
 adminRouter.get('/exam-periods/:examPeriodId/exports/consolidated', exportConsolidatedTimetableController);
 adminRouter.get(

@@ -11,13 +11,11 @@ export async function importAdminCoursePrefixesController(request, response) {
 
 export async function importRoomsController(request, response) {
   const summary = await importRooms(request.file);
-  response.status(200).json({ message: 'Rooms imported successfully.', summary });
+  response.status(200).json({ message: 'Rooms replaced successfully from the uploaded file.', summary });
 }
 
 export async function importCourseEnrollmentsController(request, response) {
   const summary = await importCourseEnrollments(request.file, request.params.examPeriodId);
-  const message = summary.coursesSkipped > 0
-    ? 'Course enrollments imported with scheduled courses skipped.'
-    : 'Course enrollments imported successfully.';
+  const message = 'Course enrolments replaced successfully from the uploaded file.';
   response.status(200).json({ message, summary });
 }

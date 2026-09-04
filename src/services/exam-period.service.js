@@ -98,7 +98,7 @@ export async function createExamPeriod({
        created_by
      )
      VALUES ($1, $2, $3, $4, $5::time, $6::time, $7::time, $8::time, $9)
-     RETURNING id, name, start_date, end_date, timezone,
+     RETURNING id, name, start_date::text AS start_date, end_date::text AS end_date, timezone,
                morning_start_time, morning_end_time, afternoon_start_time, afternoon_end_time,
                is_active, created_by, created_at`,
     [
@@ -113,7 +113,7 @@ export async function createExamPeriod({
 
 export async function listExamPeriods() {
   const result = await pool.query(
-    `SELECT id, name, start_date, end_date, timezone,
+    `SELECT id, name, start_date::text AS start_date, end_date::text AS end_date, timezone,
             morning_start_time, morning_end_time, afternoon_start_time, afternoon_end_time,
             is_active, created_by, created_at
      FROM exam_periods

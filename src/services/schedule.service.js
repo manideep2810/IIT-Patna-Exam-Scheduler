@@ -648,3 +648,129 @@ export async function getTimetable(examPeriodId, user) {
     }))
   };
 }
+
+export async function getRoomAllocationSummary(examPeriodId, examSlotId, roomId, user) {
+  requireUuid(examPeriodId, 'examPeriodId', 'INVALID_EXAM_PERIOD_ID');
+  requireUuid(examSlotId, 'examSlotId', 'INVALID_EXAM_SLOT_ID');
+  requireUuid(roomId, 'roomId', 'INVALID_ROOM_ID');
+
+  const slotAndRoom = await pool.query(
+    `SELECT slots.id AS slot_id, slots.exam_date, slots.session, slots.start_at, slots.end_at,
+            rooms.id AS room_id, rooms.room_number, rooms.location, rooms.exam_capacity,
+            COALESCE(usage.reserved_seats, 0)::integer AS reserved_seats
+     FROM exam_slots slots
+     CROSS JOIN rooms
+     LEFT JOIN room_slot_usage usage ON usage.exam_slot_id = slots.id AND usage.room_id = rooms.id
+     WHERE slots.id = $1
+       AND slots.exam_period_id = $2
+       AND rooms.id = $3`,
+    [examSlotId, examPeriodId, roomId]
+  );
+  const selection = slotAndRoom.rows[0];
+
+  if (!selection) {
+    throw new AppError(404, 'ROOM_OR_SLOT_NOT_FOUND', 'The selected room or examination session was not found in this period.');
+  }
+
+  const allocationsResult = await pool.query(
+    `SELECT exams.id AS exam_id, courses.course_code, courses.course_name,
+            allocations.seats_reserved
+     FROM exam_room_allocations allocations
+     JOIN exams ON exams.id = allocations.exam_id
+     JOIN courses ON courses.id = exams.course_id
+     WHERE exams.exam_period_id = $1
+       AND exams.exam_slot_id = $2
+       AND exams.status = 'SCHEDULED'
+       AND allocations.room_id = $3
+       AND (
+         $4 = 'SUPER_ADMIN'
+         OR EXISTS (
+           SELECT 1
+           FROM admin_course_prefix_permissions permissions
+           WHERE permissions.user_id = $5
+             AND UPPER(courses.course_code) LIKE permissions.course_prefix || '%'
+         )
+       )
+     ORDER BY courses.course_code ASC`,
+    [examPeriodId, examSlotId, roomId, user.role, user.id]
+  );
+  const examIds = allocationsResult.rows.map((row) => row.exam_id);
+  const candidatesByExam = new Map();
+  const allocationsByExam = new Map();
+
+  if (examIds.length > 0) {
+    const [candidatesResult, allAllocationsResult] = await Promise.all([
+      pool.query(
+        `SELECT candidates.exam_id, students.roll_number
+         FROM exam_candidates candidates
+         JOIN students ON students.id = candidates.student_id
+         WHERE candidates.exam_id = ANY($1::uuid[])
+         ORDER BY candidates.exam_id ASC, students.roll_number ASC`,
+        [examIds]
+      ),
+      pool.query(
+        `SELECT allocations.exam_id, allocations.room_id, allocations.seats_reserved,
+                rooms.room_number
+         FROM exam_room_allocations allocations
+         JOIN rooms ON rooms.id = allocations.room_id
+         WHERE allocations.exam_id = ANY($1::uuid[])
+         ORDER BY allocations.exam_id ASC, allocations.seats_reserved DESC, rooms.room_number ASC`,
+        [examIds]
+      )
+    ]);
+
+    for (const candidate of candidatesResult.rows) {
+      const entries = candidatesByExam.get(candidate.exam_id) ?? [];
+      entries.push(candidate.roll_number);
+      candidatesByExam.set(candidate.exam_id, entries);
+    }
+    for (const allocation of allAllocationsResult.rows) {
+      const entries = allocationsByExam.get(allocation.exam_id) ?? [];
+      entries.push(allocation);
+      allocationsByExam.set(allocation.exam_id, entries);
+    }
+  }
+
+  const courseAllocations = allocationsResult.rows.map((allocation) => {
+    const candidates = candidatesByExam.get(allocation.exam_id) ?? [];
+    const allAllocations = allocationsByExam.get(allocation.exam_id) ?? [];
+    let offset = 0;
+    let roomStudents = [];
+
+    for (const examAllocation of allAllocations) {
+      const nextOffset = offset + Number(examAllocation.seats_reserved);
+      if (examAllocation.room_id === roomId) {
+        roomStudents = candidates.slice(offset, nextOffset);
+        break;
+      }
+      offset = nextOffset;
+    }
+
+    return {
+      examId: allocation.exam_id,
+      courseCode: allocation.course_code,
+      courseName: allocation.course_name,
+      seatsReserved: Number(allocation.seats_reserved),
+      students: roomStudents
+    };
+  });
+
+  return {
+    slot: {
+      id: selection.slot_id,
+      examDate: selection.exam_date,
+      session: selection.session,
+      startAt: selection.start_at,
+      endAt: selection.end_at
+    },
+    room: {
+      id: selection.room_id,
+      roomNumber: selection.room_number,
+      location: selection.location,
+      capacity: Number(selection.exam_capacity),
+      reservedSeats: Number(selection.reserved_seats),
+      vacantSeats: Math.max(0, Number(selection.exam_capacity) - Number(selection.reserved_seats))
+    },
+    courseAllocations
+  };
+}
